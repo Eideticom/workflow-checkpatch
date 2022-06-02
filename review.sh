@@ -38,7 +38,7 @@ function post_code_message()
 {
     "commit_id": "$COMMIT",
     "path": "${FILE}",
-    "position": ${LINE},
+    "line": ${LINE},
     "body": "${MESSAGE}"
 }
 EOF
