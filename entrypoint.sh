@@ -61,4 +61,4 @@ done
 
 echo -e "\e[1;34mDone\e[0m"
 
-exit $RESULT
+exit 0
