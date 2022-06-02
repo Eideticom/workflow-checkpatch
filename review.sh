@@ -7,14 +7,58 @@ if [[ -z "$CHECKPATCH_COMMAND" ]] ; then
     CHECKPATCH_COMMAND="checkpatch.pl --no-tree"
 fi
 
+# Argument
+COMMIT=$1
+
+# Get PR number
+PR=${GITHUB_REF#"refs/pull/"}
+PRNUM=${PR%"/merge"}
+
 # Generate email style commit message
 PATCH_FILE=$(git format-patch $1 -1)
 PATCHMAIL=$($CHECKPATCH_COMMAND $PATCH_FILE)
+
+# Github REST API endpoints
+BODY_URL=https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PRNUM}/comments
+CODE_URL=https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PRNUM}/comments
 
 # Internal state variables
 RESULT=0
 FOUND=0
 MESSAGE=
+
+# Write message to specific file and line
+function post_code_message()
+{
+    echo "POST to ${CODE_URL} with ${MESSAGE}"
+    curl ${CODE_URL} -s \
+        -H "Authorization: token ${GITHUB_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -X POST --data "$(cat <<EOF
+{
+    "commit_id": "$COMMIT",
+    "path": "${FILE}",
+    "position": ${LINE},
+    "body": "${MESSAGE}"
+}
+EOF
+)"
+}
+
+# Write message to pull-request comment
+function post_comment_message()
+{
+    echo "POST to ${BODY_URL} with ${MESSAGE}"
+    curl ${BODY_URL} -s \
+        -H "Authorization: token ${GITHUB_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -X POST --data "$(cat <<EOF
+{
+    "body": ":warning: ${COMMIT} - ${MESSAGE}"
+}
+EOF
+)"
+}
 
 #
 # checkpatch.pl result format
@@ -68,13 +112,17 @@ do
         else
             # An empty line means the paragraph is over.
             if [[ -z $row ]]; then
-                if [[ -z $FILE ]]; then
-                    echo "::error ::${MESSAGE}"
+                if [[ ! -z "$GITHUB_TOKEN" ]]; then
+                    echo "Post comment to Github"
+                    if [[ -z $FILE ]]; then
+                        post_comment_message
+                    else
+                        post_code_message
+                    fi
                 else
-                    echo "::error file=${FILE},line=${LINE}::${MESSAGE}"
+                    # Output empty line
+                    echo
                 fi
-                # Output empty line
-                echo
 
                 # Code review found a problem.
                 RESULT=1
